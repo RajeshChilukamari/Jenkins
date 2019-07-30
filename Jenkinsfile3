@@ -1,9 +1,9 @@
 node{
     try{
         echo "starting containers"
-        sh "sudo docker run -d --name=redis redis"
-        sh "sudo docker run -d --name=influx influxdb"
-        sh "sudo docker run -d --name=hello-world hello-world"
+        sh "sudo docker start -d --name=redis redis"
+        sh "sudo docker start -d --name=influx influxdb"
+        sh "sudo docker start -d --name=hello-world hello-world"
     }
     catch(Exception exp){
         println "Exception occured"
