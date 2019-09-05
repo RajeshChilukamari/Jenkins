@@ -1,3 +1,114 @@
-node{
-  echo "hi hello"
+
+
+//repo name
+repo = "Jenkins"
+
+//repo path
+repoPath = "/var/$repo"
+
+//Git branch name
+branch = "main"
+    
+//Git Credentials Id
+cid = "GitCredentials"
+
+//docker info
+dockerContainer = "influxdb"
+dockerImage = "influxdb"
+dockerNet = "influxdbnet"
+
+versionFile = "/var/versions.ini"
+
+mountPath ="/var/db"
+
+
+//main function
+node(){
+
+    //1. Sync repo
+    stage('Syncing repo'){
+        //Removing old reo directory
+        if(fileExists("$repoPath")){
+            sh("sudo rm -rf $repoPath")
+        }
+
+
+        //Pulling repo
+        dir("$repoPath"){
+            
+            //Git details
+            git(
+                url: "https://github.com/RajeshChilukamari/${repo}.git",
+                credentialsId: "${cid}",
+                branch: "${branch}"
+            )
+        }
+    }
+
+
+    //2.docker Prune
+    stage('Docker Prune'){
+
+       //stopping Container
+       sh("sudo docker ps -f name=$dockerContainer -q | xargs --no-run-if-empty sudo docker container stop")
+       
+       //Removing Container
+       sh("sudo docker container ls -a -fname=$dockerContainer -q | xargs -r sudo docker container rm") 
+       
+       //Removing Image
+       sh("sudo docker images | grep '${dockerImage}\\>' | awk '{print \$3}' | xargs -r sudo docker rmi")
+
+    }
+
+
+    //3. update version details
+    stage('Version Update'){
+
+            //Giving permissions to access by jenkins
+        sh("sudo chmod 777 $versionFile")
+       
+        //Reading file
+        prevVersion = readFile("$versionFile").trim()
+        
+        newVersion = ''
+        for (i in (prevVersion.split("[.]")[0,1]) ) {
+            newVersion += (i + '.')
+        }
+        
+        //New version
+        newVersion += (prevVersion.split("[.]")[2] as int) + 1 
+        //println(newVersion)
+        
+        //Writing into file
+        sh("sudo echo ${newVersion} > ${versionFile}")
+        
+    } 
+
+    //4.docker Build
+    stage('Docker Build'){
+
+        //Check MountPoint    
+        if(!fileExists("$mountPath")){
+            sh("sudo mkdir -p $mountPath")
+        }
+
+        //Building Image
+        Version = readFile("$versionFile").trim()
+        dockerVersion = "influxdb-$Version"
+        sh("sudo docker build --rm=true --no-cache=true -t \"${dockerImage}\":\"${dockerVersion}\" ${repoPath}")
+        
+
+        //Network check
+        sh(script: """if [ -z \$(sudo docker network ls -f name=${dockerNet} -q) ] ; then
+            sudo docker network create ${dockerNet} 
+        fi""")
+
+        //Running Container
+        sh("sudo docker run -d -p 8086:8086  --name $dockerContainer --net $dockerNet -v $mountPath:/var/lib/influxdb \"${dockerImage}\":\"${dockerVersion}\"")
+
+    }
+
 }
+
+
+
